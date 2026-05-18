@@ -29,24 +29,26 @@ def test_challenge_nonce_uses_os_csprng_not_rand() -> None:
     assert "rand(" not in source
     assert "srand(" not in source
     assert "getrandom(" in source
-    assert "arc4random_buf(" in source
+    assert "SecRandomCopyBytes(" in source
+    assert 'open("/dev/urandom", O_RDONLY)' in source
 
 
 def test_linux_getrandom_result_is_checked_and_retried() -> None:
-    helper = _function(_source(), "fill_secure_nonce")
+    helper = _function(_source(), "fill_secure_random")
 
     assert "while (offset < len)" in helper
-    assert "getrandom(nonce + offset, len - offset, 0)" in helper
-    assert "offset += (size_t)n" in helper
+    assert "getrandom(buf + offset, len - offset, 0)" in helper
+    assert "offset += (size_t)got" in helper
     assert "errno == EINTR" in helper
     assert "(void)ret" not in helper
 
 
-def test_unsupported_platform_fails_closed_without_weak_fallback() -> None:
-    helper = _function(_source(), "fill_secure_nonce")
+def test_unsupported_platform_uses_urandom_without_weak_fallback() -> None:
+    helper = _function(_source(), "fill_secure_random")
     fallback = helper.rsplit("#else", 1)[1]
 
     assert "return -1;" in fallback
+    assert 'open("/dev/urandom", O_RDONLY)' in fallback
     assert "read_timebase()" not in fallback
     assert ">> (i * 8)" not in fallback
 
@@ -54,5 +56,5 @@ def test_unsupported_platform_fails_closed_without_weak_fallback() -> None:
 def test_nonce_failure_exits_before_returning_challenge() -> None:
     generate_challenge = _function(_source(), "generate_challenge")
 
-    assert "fill_secure_nonce(c.nonce, sizeof(c.nonce)) != 0" in generate_challenge
-    assert "exit(EXIT_FAILURE)" in generate_challenge
+    assert "fill_secure_random(c.nonce, sizeof(c.nonce)) != 0" in generate_challenge
+    assert "exit(1)" in generate_challenge
